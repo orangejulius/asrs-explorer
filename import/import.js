@@ -1,23 +1,17 @@
 var through = require('through2');
 var csv_parse = require('csv-parse');
 var fs = require('fs');
-
-var all_items_filename = '/home/spectre256/repos/asrs-data/extracted/ALL_ITEMS_DATA_TABLE.csv';
-var text_filename = '~/repos/asrs-data/extracted/TEXT_DATA_TABLE.csv';
+var elasticsearch = require('elasticsearch');
 
 var parser = csv_parse({delimiter: ','});
-
-var records = {};
-
-var elasticsearch = require('elasticsearch');
 var client = new elasticsearch.Client({
-    host: 'localhost:9200',
-    log: 'debug'
+    host: 'localhost:9200'
 });
 
+var filename = process.argv[2];
 var i = 0;
 
-fs.createReadStream(all_items_filename)
+fs.createReadStream(filename)
 .pipe(parser)
 .pipe(through.obj(function(chunk, enc, callback) {
     //[ 'ITEM_ID',
@@ -29,54 +23,68 @@ fs.createReadStream(all_items_filename)
     if (chunk[0] === 'ITEM_ID') {
         console.log(chunk);
     } else {
-        var doc;
-
         var id = parseInt(chunk[0]);
         var entity = chunk[1];
+        var enumerator = chunk[2];
         var attribute = chunk[3];
         var value = chunk[4];
 
-        if (!entity) {
-            console.log("entity empty in record " + id);
-        }
+        var doc = {
+            id: id,
+            entity: entity,
+            enumerator: enumerator,
+            attribute: attribute,
+            value: value
+        };
 
-        if (!attribute) {
-            console.log("attribute empty in record " + id);
-        }
-
-        if (!value) {
-            console.log("value empty in record " + id + " ('" + value + "')");
-        }
-
-        if (records[id]) {
-            doc = records[id];
-        } else {
-            doc = {
-                id: id
-            }
-        }
-
-        doc[entity] = doc[entity] || {};
-        doc[entity][attribute] = value;
-
-        records[id] = doc;
+        this.push(doc);
     }
     callback();
-})).on('finish', function() {
-    console.log(Object.keys(records).length + " objects imported");
+})).pipe(through.obj(function(chunk, encoding, callback) {
+    var record = chunk;
 
-    Object.keys(records).forEach(function(record_id) {
-        var record = records[record_id];
+    client.get({
+        index: 'asrs',
+        type: 'asrs',
+        id: record.id
+    }, function(error, response) {
+        if (error && error.status !== '404') {
+            console.log(error);
+            console.log(response);
+            return callback();
+        } else {
+            if (response.found) {
+                var existing = response._source;
+                existing[record.entity] = existing[record.entity] || {};
+                existing[record.entity][record.enumerator] = existing[record.entity][record.enumerator] || {};
+                existing[record.entity][record.enumerator][record.attribute] = record.value;
+                client.update({
+                    index: 'asrs',
+                    type: 'asrs',
+                    id: record.id,
+                    body: {
+                        doc: existing
+                    }
+                }, function(error2, response2) {
+                    if (error2) console.log(error2);
+                    return callback();
+                });
+            } else {
+                var doc = {};
+                doc[record.entity] = {};
+                doc[record.entity][record.enumerator] = {};
+                doc[record.entity][record.enumerator][record.attribute] = record.value;
+                client.create({
+                    index: 'asrs',
+                    type: 'asrs',
+                    id: record.id,
+                    body: doc
 
-        client.create({
-            index: 'asrs',
-            type: 'asrs',
-            id: record.id,
-            body: record
-        }, function(error, response) {
-            if (error) {
-                console.log(response);
+                }, function(error2, response2) {
+                    if (error2) console.log(error2);
+                    return callback();
+                });
             }
-        });
+        }
     });
-});
+}));
