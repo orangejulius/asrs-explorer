@@ -10,7 +10,7 @@ var pipe = through.obj(function(chunk, encoding, callback) {
 
     client.get({
         index: 'asrs',
-        type: 'asrs',
+        type: 'record',
         id: record.id
     }, function(error, response) {
         if (error && error.status !== '404') {
@@ -25,7 +25,7 @@ var pipe = through.obj(function(chunk, encoding, callback) {
                 existing[record.entity][record.enumerator][record.attribute] = record.value;
                 client.update({
                     index: 'asrs',
-                    type: 'asrs',
+                    type: 'record',
                     id: record.id,
                     body: {
                         doc: existing
@@ -41,7 +41,7 @@ var pipe = through.obj(function(chunk, encoding, callback) {
                 doc[record.entity][record.enumerator][record.attribute] = record.value;
                 client.create({
                     index: 'asrs',
-                    type: 'asrs',
+                    type: 'record',
                     id: record.id,
                     body: doc
 
