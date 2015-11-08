@@ -9,17 +9,10 @@ var client = new elasticsearch.Client({
 });
 
 var filename = process.argv[2];
-var i = 0;
 
 fs.createReadStream(filename)
 .pipe(parser)
 .pipe(through.obj(function(chunk, enc, callback) {
-    //[ 'ITEM_ID',
-        //'ENTITY',
-        //'ENUMERATOR',
-        //'ATTRIBUTE',
-        //'VALUE',
-        //'DISPLAY_VALUE' ]
     if (chunk[0] === 'ITEM_ID') {
         console.log(chunk);
     } else {
